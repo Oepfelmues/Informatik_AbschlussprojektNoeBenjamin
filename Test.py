@@ -1,7 +1,6 @@
 # Informatik_AbschlussprojektNoeBenjamin
 
 import gym
-env = gym.make('CartPole-v0')
 
 # Importiere supermario
 import gym_super_mario_bros
