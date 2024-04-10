@@ -1,9 +1,8 @@
 
-import gym
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
-
+import gym
 
 
 
