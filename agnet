@@ -6,142 +6,159 @@ from game import SnakeGameAI, Direction, Point
 from model import Linear_QNet, QTrainer
 from helper import plot
 
-MAX_MEMORY = 100_000
-BATCH_SIZE = 1000
-LR = 0.001
+# Variabeln für das Training 
+MAX_MEMORY = 100_000 # Maximale Speichergröße für das Speichern(Memory short und long vergangener Spielschritte 
+BATCH_SIZE = 1000 # Batch-Größe für das Training 
+LR = 0.001 # Lernrate des neuronalen Netzwerks
 
+# Definition der Agenten Class 
 class Agent:
 
+    # Initialisierung der Agenten Attribute 
     def __init__(self):
-        self.n_games = 0
-        self.epsilon = 0 # randomness
-        self.gamma = 0.9 # discount rate
-        self.memory = deque(maxlen=MAX_MEMORY) # popleft()
-        self.model = Linear_QNet(11, 256, 3)
-        self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
+        self.n_games = 0 # Anzahl der gespielten Spiele
+        self.epsilon = 0 # Zufälligkeitsrate 
+        self.gamma = 0.9 # Faktor für zukünftige Belohnungen
+        self.memory = deque(maxlen=MAX_MEMORY) # Speicher für vergangene Spielzustände
+        self.model = Linear_QNet(11, 256, 3) # Neuronales Netzwerk für Q-Learning
+        self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma) # Trainer für das neuronale Netzwerk
 
 
+    # Erfassung des aktuellen Spielzustands
     def get_state(self, game):
-        head = game.snake[0]
+        head = game.snake[0] # Position des Schlangenkopfes
+        # Punkte in alle Richtungen um den Schlangenkopf
         point_l = Point(head.x - 20, head.y)
         point_r = Point(head.x + 20, head.y)
         point_u = Point(head.x, head.y - 20)
         point_d = Point(head.x, head.y + 20)
         
+        # Richtungen der Schlange 
         dir_l = game.direction == Direction.LEFT
         dir_r = game.direction == Direction.RIGHT
         dir_u = game.direction == Direction.UP
         dir_d = game.direction == Direction.DOWN
 
+        # Features, die den Spielzustand repräsentieren 
         state = [
-            # Danger straight
+            # Kollisionen in gerader Richtung
             (dir_r and game.is_collision(point_r)) or 
             (dir_l and game.is_collision(point_l)) or 
             (dir_u and game.is_collision(point_u)) or 
             (dir_d and game.is_collision(point_d)),
 
-            # Danger right
+            # Kollisionen nach rechts 
             (dir_u and game.is_collision(point_r)) or 
             (dir_d and game.is_collision(point_l)) or 
             (dir_l and game.is_collision(point_u)) or 
             (dir_r and game.is_collision(point_d)),
 
-            # Danger left
+            # Kollisionen nach links 
             (dir_d and game.is_collision(point_r)) or 
             (dir_u and game.is_collision(point_l)) or 
             (dir_r and game.is_collision(point_u)) or 
             (dir_l and game.is_collision(point_d)),
             
-            # Move direction
+            # Bewegungsrichtungen der Schlange
             dir_l,
             dir_r,
             dir_u,
             dir_d,
             
-            # Food location 
+            # Position der Früchte relativ zur Schlange 
             game.food.x < game.head.x,  # food left
             game.food.x > game.head.x,  # food right
             game.food.y < game.head.y,  # food up
             game.food.y > game.head.y  # food down
             ]
 
-        return np.array(state, dtype=int)
+        return np.array(state, dtype=int) # Rückgabe des Spielzustands als NumPy-Array
 
+    # Speichern vergangener Spielzustände 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done)) # popleft if MAX_MEMORY is reached
 
+    #  Langfristigen Training des neuronalen Netzwerks
     def train_long_memory(self):
         if len(self.memory) > BATCH_SIZE:
-            mini_sample = random.sample(self.memory, BATCH_SIZE) # list of tuples
+             # Zufällige Auswahl eines Teils des Speichers für das Training
+            mini_sample = random.sample(self.memory, BATCH_SIZE) 
         else:
             mini_sample = self.memory
 
+        # Extrahieren der einzelnen Komponenten aus den Spielzuständen 
         states, actions, rewards, next_states, dones = zip(*mini_sample)
+         # Training des neuronalen Netzwerks mit den ausgewählten Spielzuständen 
         self.trainer.train_step(states, actions, rewards, next_states, dones)
-        #for state, action, reward, nexrt_state, done in mini_sample:
-        #    self.trainer.train_step(state, action, reward, next_state, done)
-
+    
+    # Kurzfristigen Training des neuronalen Netzwerks
     def train_short_memory(self, state, action, reward, next_state, done):
         self.trainer.train_step(state, action, reward, next_state, done)
 
+    # Auswahl einer Aktion basierend auf dem Spielzustand 
     def get_action(self, state):
-        # random moves: tradeoff exploration / exploitation
+        # Festlegen nach wie vielen Zügen keine Zufalls Züge mehr kommen 
         self.epsilon = 80 - self.n_games
-        final_move = [0,0,0]
+        final_move = [0,0,0] # Initialisierung der Aktionen 
+
         if random.randint(0, 200) < self.epsilon:
-            move = random.randint(0, 2)
+            move = random.randint(0, 2)  # Zufällige Aktion
             final_move[move] = 1
         else:
+            # Vorhersage der besten Aktion durch das neuronale Netzwerk
             state0 = torch.tensor(state, dtype=torch.float)
             prediction = self.model(state0)
             move = torch.argmax(prediction).item()
             final_move[move] = 1
 
-        return final_move
+        return final_move # Rückgabe der ausgewählten Aktion
 
-
+# Funktion zum Trainieren des Agenten 
 def train():
-    plot_scores = []
-    plot_mean_scores = []
-    total_score = 0
-    record = 0
-    agent = Agent()
-    game = SnakeGameAI()
+    plot_scores = [] # Liste zur Speicherung der Scores
+    plot_mean_scores = [] # Liste zur Speicherung der durchschnittlichen Scores 
+    total_score = 0  # Gesamtscore am Anfang 
+    record = 0  # Rekordscore am Anfang 
+    agent = Agent()  # Initialisierung des Agenten 
+    game = SnakeGameAI() # Initialisierung des Spiels 
+    
     while True:
-        # get old state
+         # Aktuellen Spielzustand abrufen 
         state_old = agent.get_state(game)
 
-        # get move
+        # Aktion basierend auf dem Spielzustand auswählen 
         final_move = agent.get_action(state_old)
 
-        # perform move and get new state
+       # Aktion durchführen und neuen Spielzustand erhalten 
         reward, done, score = game.play_step(final_move)
         state_new = agent.get_state(game)
 
-        # train short memory
+        # Kurzfristiges Training des neuronalen Netzwerks
         agent.train_short_memory(state_old, final_move, reward, state_new, done)
 
-        # remember
+        # Vergangenen Spielzustand speichern 
         agent.remember(state_old, final_move, reward, state_new, done)
 
         if done:
-            # train long memory, plot result
-            game.reset()
-            agent.n_games += 1
-            agent.train_long_memory()
+            game.reset()  # Spiel zurücksetzen 
+            agent.n_games += 1 # Anzahl der gespielten Spiele erhöhen 
+            agent.train_long_memory() # Anzahl der gespielten Spiele erhöhen 
 
+             # Überprüfen, ob ein neuer Rekord erzielt wurde 
             if score > record:
                 record = score
-                agent.model.save()
+                agent.model.save() # Modell speichern 
 
             print('Game', agent.n_games, 'Score', score, 'Record:', record)
 
+            # Ergebnisse für die Grafik speichern 
             plot_scores.append(score)
             total_score += score
             mean_score = total_score / agent.n_games
             plot_mean_scores.append(mean_score)
+            # Ergebnisse visualisieren
             plot(plot_scores, plot_mean_scores)
 
-
+# Um das Skript zu starten 
 if __name__ == '__main__':
     train()

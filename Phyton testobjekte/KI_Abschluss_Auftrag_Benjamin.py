@@ -81,7 +81,7 @@ z = w0 * x0 + w1 * x1 + w2 * x2 + w3 * x3 + w4 * x4 + w5 * x5 + w6 * x6 + w7 * x
 testcountR = 0
 testcountF = 0
 
-#features, labels = daten_einlesen("Rossinen Data copy.csv")  #testen ob es funktioneret 
+features, labels = daten_einlesen("Rossinen Data copy.csv")  #testen ob es funktioneret 
 
 #print(f"{features=}")
 #print(f"{labels=}")
